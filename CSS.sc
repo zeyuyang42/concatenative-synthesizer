@@ -1,18 +1,25 @@
-s.boot
-s.reboot
+s.boot；
+s.options.memSize_(65536 * 4); //according to the Note in JPverb
+s.reboot；
 (
+	/*
+* VARIABLES: all variables used in this synthesizer (with GUI)
+	 */
 var buf_ctrl, buf_src;
 var path_ctrl, path_src;
 var scope_ctrl, scope_src, scope_out, scope_text_ctrl, scope_text_src;
 var eq_slider_fb, eq_slider_rq, eq_text_fb, eq_text_rq, eq_button_reset, eq_func_reset;
 var cct_text_ttl, cct_text_zcr, cct_text_lms, cct_text_sc, cct_text_st, cct_slider_zcr,
     cct_slider_lms, cct_slider_sc, cct_slider_st,
+	cct_text_time, cct_text_dur, cct_text_lens, cct_text_rand,
+    cct_slider_time, cct_slider_dur, cct_slider_lens, cct_slider_rand,
     cct_button_freeze, cct_func_freeze,
     cct_button_reset, cct_func_reset;
-/*var cct_slider_zcr, cct_slider_lms, cct_slider_sc, cct_slider_st;*/
 var synth_control, synth_source, synth_concate, synth_eq, synth_rvrb, synth_output;
 var bufnum_ctrl, bufnum_src, bufnum_scope_ctrl, bufnum_scope_src, bufnum_scope_out;
-var bus_control, bus_source, bus_concat, bus_eq, bus_output;
+var bus_control, bus_source, bus_concat, bus_eq, bus_rvrb, bus_output;
+var	layout_cct_zcr, layout_cct_lms, layout_cct_sc, layout_cct_st,
+    layout_cct_time, layout_cct_dur, layout_cct_lens, layout_cct_rand;
 var layout_cct, layout_scope, layout_eq;
 var font = Font("Silom", 14);
 /*var load_audio;
@@ -24,8 +31,8 @@ s.waitForBoot {
 	 */
 
 	//input audio path      //todo: use dialog input instead
-	path_ctrl = thisProcess.nowExecutingPath.dirname+/+"Zum good luck seg.wav";
-	path_src = thisProcess.nowExecutingPath.dirname+/+"0015-House Bed.wav";
+	path_ctrl = thisProcess.nowExecutingPath.dirname+/+"demo_control.wav";
+	path_src = thisProcess.nowExecutingPath.dirname+/+"demo_source.wav";
 
 	// use only only channel 0 as input
 	buf_ctrl = Buffer.readChannel(s, path_ctrl, channels: 0);
@@ -49,6 +56,7 @@ s.waitForBoot {
 	bus_source  = 43;
 	bus_concat  = 42;
 	bus_eq      = 41;
+	bus_rvrb    = 40;
 	bus_output  =  0;
 
 	/*
@@ -59,15 +67,15 @@ s.waitForBoot {
 	SynthDef(\zy_concate,{
 		arg bufnum_scope_ctrl, bufnum_scope_src,
 		    bus_control, bus_source, bus_concat,
-		    storesize=1.0, seektime=1.0, seekdur=1.0, matchlen=0.05, freeze=0,
+		    storesize=5.0, seektime=1.0, seekdur=1.0, matchlen=0.05, freeze=0,
 		    zcr=0.0, lms=1.0, sc=0.0, st=0.0,
-		    rand=0.9, thres=0.01 ,mul=1.0, add=0.0;
+		    rand=0.0, thres=0.01;
 		var concat, control, source;
 		//
 		control = In.ar(bus_control, 1);
 		source =  In.ar(bus_source, 1);
 		// concatenative synthesis algorithm
-		concat= Concat2.ar(control, source, storesize, seektime, seekdur, matchlen, freeze, zcr, lms, sc, st, rand, thres, mul, add);
+		concat= Concat2.ar(control, source, storesize, seektime, seekdur, matchlen, freeze, zcr, lms, sc, st, rand, thres);
 		// writing to scope buffer
 		ScopeOut2.ar(Normalizer.ar(control), bufnum_scope_ctrl);
 		ScopeOut2.ar(Normalizer.ar(source),  bufnum_scope_src);
@@ -119,7 +127,6 @@ s.waitForBoot {
 	synth_eq      = Synth(\zy_10eq, [\bus_in, bus_concat, \bus_out, bus_eq]);
 	synth_concate = Synth(\zy_concate, [\bufnum_scope_ctrl, bufnum_scope_ctrl, \bufnum_scope_src, bufnum_scope_src,
 		                  \bus_control, bus_control, \bus_source, bus_source, \bus_concat, bus_concat]);
-
 
 
 	/*
@@ -212,11 +219,20 @@ s.waitForBoot {
 	cct_text_lms = StaticText().string_("lms").align_(\center).font_(font);
 	cct_text_sc =  StaticText().string_("s_c").align_(\center).font_(font);
 	cct_text_st =  StaticText().string_("s_t").align_(\center).font_(font);
-	cct_slider_zcr = Slider(w, Rect(0, 00, 100, 5)).value_(0.0).action_({ |sl| synth_concate.set(\zcr, sl.value.postln)});
-	cct_slider_lms = Slider(w, Rect(0, 00, 100, 5)).value_(1.0).action_({ |sl| synth_concate.set(\lms, sl.value.postln)});
-	cct_slider_sc  = Slider(w, Rect(0, 00, 100, 5)).value_(0.0).action_({ |sl| synth_concate.set(\sc,  sl.value.postln)});
-	cct_slider_st  = Slider(w, Rect(0, 00, 100, 5)).value_(0.0).action_({ |sl| synth_concate.set(\st,  sl.value.postln)});
+	cct_slider_zcr = Knob(w, Rect(0, 00, 100, 5)).value_(0.0).action_({ |sl| synth_concate.set(\zcr, sl.value.postln)});
+	cct_slider_lms = Knob(w, Rect(0, 00, 100, 5)).value_(1.0).action_({ |sl| synth_concate.set(\lms, sl.value.postln)});
+	cct_slider_sc  = Knob(w, Rect(0, 00, 100, 5)).value_(0.0).action_({ |sl| synth_concate.set(\sc,  sl.value.postln)});
+	cct_slider_st  = Knob(w, Rect(0, 00, 100, 5)).value_(0.0).action_({ |sl| synth_concate.set(\st,  sl.value.postln)});
 
+	cct_text_time = StaticText().string_("time").align_(\center).font_(font);
+	cct_text_dur  = StaticText().string_("dur ").align_(\center).font_(font);
+	cct_text_lens = StaticText().string_("lens").align_(\center).font_(font);
+	cct_text_rand = StaticText().string_("rand").align_(\center).font_(font);
+
+	cct_slider_time = Knob(w, Rect(0, 00, 100, 5)).value_(0.0).action_({ |sl| synth_concate.set(\seektime, sl.value.linlin(0, 1, 1, 5).postln)});
+	cct_slider_dur  = Knob(w, Rect(0, 00, 100, 5)).value_(0.0).action_({ |sl| synth_concate.set(\seekdur, sl.value.linlin(0, 1, 1, 5).postln)});
+	cct_slider_lens = Knob(w, Rect(0, 00, 100, 5)).value_(0.5).action_({ |sl| synth_concate.set(\matchlen, sl.value.linlin(0, 1, 0.0, 0.1).postln)});
+	cct_slider_rand = Knob(w, Rect(0, 00, 100, 5)).value_(0.0).action_({ |sl| synth_concate.set(\rand,  sl.value.linlin(0, 1, 0.0, 0.8).postln)});
 
 	cct_button_freeze = Button().states_([["freeze", Color.black, Color.white],
 		                                  ["sampling", Color.white, Color.new255(205.0, 140.0, 149.0)]]).action_({cct_func_freeze.value}).font_(font);
@@ -228,32 +244,44 @@ s.waitForBoot {
 		cct_slider_lms.value_(1.0);
 		cct_slider_sc.value_(0.0);
 		cct_slider_st.value_(0.0);
+		cct_slider_time.value_(0.0);
+		cct_slider_dur.value_(0.0);
+		cct_slider_lens.value_(0.5);
+		cct_slider_rand.value_(0.0);
 		synth_concate.set(\zcr, 0.0.postln);
 		synth_concate.set(\lms, 1.0.postln);
 		synth_concate.set(\sc,  0.0.postln);
 		synth_concate.set(\st,  0.0.postln);
+		synth_concate.set(\seektime, 0.0.postln);
+		synth_concate.set(\seekdur, 0.0.postln);
+		synth_concate.set(\matchlen,  0.5.postln);
+		synth_concate.set(\rand,  0.0.postln);
 	};
 
+	// layout of GUI
+	// concate synthesizer controll panel layout
+	layout_cct_zcr  = GridLayout.rows([cct_text_zcr, cct_slider_zcr]);
+	layout_cct_lms  = GridLayout.rows([cct_text_lms, cct_slider_lms]);
+	layout_cct_sc   = GridLayout.rows([cct_text_sc, cct_slider_sc]);
+	layout_cct_st   = GridLayout.rows([cct_text_st, cct_slider_st]);
+	layout_cct_time = GridLayout.rows([cct_text_time, cct_slider_time]);
+	layout_cct_dur  = GridLayout.rows([cct_text_dur, cct_slider_dur]);
+	layout_cct_lens = GridLayout.rows([cct_text_lens, cct_slider_lens]);
+	layout_cct_rand = GridLayout.rows([cct_text_rand, cct_slider_rand]);
 
+	layout_cct   = GridLayout.columns([cct_text_ttl, GridLayout.rows([layout_cct_zcr, layout_cct_time]), GridLayout.rows([layout_cct_lms, layout_cct_dur]),
+		GridLayout.rows([layout_cct_sc, layout_cct_lens]), GridLayout.rows([layout_cct_st, layout_cct_rand]), GridLayout.rows([cct_button_freeze, cct_button_reset])]);
 
-
-/*	w.layout = GridLayout.columns([GridLayout.rows([GridLayout.columns([scope_text_ctrl, scope_src]),
-	GridLayout.columns([scope_text_src, scope_ctrl])]), scope_out,
-	GridLayout.columns([GridLayout.columns([eq_text_fb, GridLayout.rows(eq_slider_fb)]), eq_text_rq, eq_slider_rq, eq_button_reset]) ]);*/
-
-	layout_cct   = GridLayout.columns([cct_text_ttl, GridLayout.rows([cct_text_zcr, cct_slider_zcr]), GridLayout.rows([cct_text_lms, cct_slider_lms]),
-		GridLayout.rows([cct_text_sc, cct_slider_sc]), GridLayout.rows([cct_text_st, cct_slider_st]), GridLayout.rows([cct_button_freeze, cct_button_reset])]);
+	// audio scopeviewer layout
 	layout_scope = GridLayout.columns([GridLayout.rows([GridLayout.columns([scope_text_ctrl, scope_src]),
 		           GridLayout.columns([scope_text_src, scope_ctrl])]), scope_out]);
+
+	// eq control panel layout
 	layout_eq    = GridLayout.columns([GridLayout.columns([eq_text_fb, GridLayout.rows(eq_slider_fb)]), eq_slider_rq, eq_button_reset]);
 
 	w.layout = GridLayout.columns([layout_scope, GridLayout.rows([layout_cct, layout_eq])]);
-
 }；
 )
-
-
-
 
 /*DarkSlateGrey  [ 47.0, 79.0, 79.0 ]
 LightPink3  [ 205.0, 140.0, 149.0 ]*/
