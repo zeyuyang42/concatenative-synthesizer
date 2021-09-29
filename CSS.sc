@@ -1,6 +1,7 @@
 s.boot；
 s.options.memSize_(65536 * 4); //according to the Note in JPverb
 s.reboot；
+
 (
 	/*
 * VARIABLES: all variables used in this synthesizer (with GUI)
@@ -9,18 +10,24 @@ var buf_ctrl, buf_src;
 var path_ctrl, path_src;
 var scope_ctrl, scope_src, scope_out, scope_text_ctrl, scope_text_src;
 var eq_slider_fb, eq_slider_rq, eq_text_fb, eq_text_rq, eq_button_reset, eq_func_reset;
-var cct_text_ttl, cct_text_zcr, cct_text_lms, cct_text_sc, cct_text_st, cct_slider_zcr,
-    cct_slider_lms, cct_slider_sc, cct_slider_st,
+var cct_text_ttl,
+    cct_text_zcr, cct_text_lms, cct_text_sc, cct_text_st,
+    cct_knob_zcr, cct_knob_lms, cct_knob_sc, cct_knob_st,
 	cct_text_time, cct_text_dur, cct_text_lens, cct_text_rand,
-    cct_slider_time, cct_slider_dur, cct_slider_lens, cct_slider_rand,
+    cct_knob_time, cct_knob_dur, cct_knob_lens, cct_knob_rand,
     cct_button_freeze, cct_func_freeze,
     cct_button_reset, cct_func_reset;
+var util_text_ttl,
+    util_button_record, util_func_record,
+    util_button_play, util_func_play,
+    util_button_stream, util_func_stream,
+    util_button_loadC, util_button_loadS;
 var synth_control, synth_source, synth_concate, synth_eq, synth_rvrb, synth_output;
 var bufnum_ctrl, bufnum_src, bufnum_scope_ctrl, bufnum_scope_src, bufnum_scope_out;
-var bus_control, bus_source, bus_concat, bus_eq, bus_rvrb, bus_output;
+var bus_control, bus_source, bus_concat, bus_eq, bus_rvrb, bus_output, bus_silence;
 var	layout_cct_zcr, layout_cct_lms, layout_cct_sc, layout_cct_st,
     layout_cct_time, layout_cct_dur, layout_cct_lens, layout_cct_rand;
-var layout_cct, layout_scope, layout_eq;
+var layout_cct, layout_scope, layout_eq, layout_util;
 var font = Font("Silom", 14);
 /*var load_audio;
 var dialog = Dialog.openPanel({ |list| make.(list) }, nil, true);*/
@@ -30,7 +37,7 @@ s.waitForBoot {
 	 * DATASTORE: define buffers
 	 */
 
-	//input audio path      //todo: use dialog input instead
+	//load default audio      //todo: use dialog input instead
 	path_ctrl = thisProcess.nowExecutingPath.dirname+/+"demo_control.wav";
 	path_src = thisProcess.nowExecutingPath.dirname+/+"demo_source.wav";
 
@@ -58,6 +65,7 @@ s.waitForBoot {
 	bus_eq      = 41;
 	bus_rvrb    = 40;
 	bus_output  =  0;
+	bus_silence = 99;
 
 	/*
 	 * SYNTHESIZER: main audio processing pipeline of concatenative sound synthesizer
@@ -116,6 +124,15 @@ s.waitForBoot {
 		Out.ar(bus_out, Pan2.ar(sig, 0.0))
 	}).add;
 
+
+/*	Ndef(\zy_source, {})
+	Ndef(\zy_control,{})
+
+
+
+
+
+	*/
 	//active the control and source audio stream
 	{Out.ar(bus_control, PlayBuf.ar(1,bufnum_ctrl,BufRateScale.kr(bufnum_ctrl), loop:1))}.play;
 	{Out.ar(bus_source, PlayBuf.ar(1,bufnum_src,BufRateScale.kr(bufnum_src), loop:1))}.play;
@@ -174,7 +191,7 @@ s.waitForBoot {
 	eq_text_fb = StaticText().string_("Equalizer").align_(\center).font_(font);
 	// eq_text_rq = StaticText().string_("Q Factor").align_(\center).font_(font);
 	// slider
-	eq_slider_fb = {Slider(w, Rect(0, 0, 20, 100)).value_(0.5)}!10;
+	eq_slider_fb = {Slider(w, Rect(0, 0, 5, 100)).value_(0.5)}!10;
 	eq_slider_rq = Slider(w, Rect(0, 00, 100, 10)).value_(0.31).action_({ |sl| synth_eq.set(\rq, sl.value.linlin(0, 1, 0.1, 3).postln)});
 	// reset button
 	eq_button_reset = Button().states_([["reset"]]).action_({eq_func_reset.value}).font_(font);
@@ -219,20 +236,20 @@ s.waitForBoot {
 	cct_text_lms = StaticText().string_("lms").align_(\center).font_(font);
 	cct_text_sc =  StaticText().string_("s_c").align_(\center).font_(font);
 	cct_text_st =  StaticText().string_("s_t").align_(\center).font_(font);
-	cct_slider_zcr = Knob(w, Rect(0, 00, 100, 5)).value_(0.0).action_({ |sl| synth_concate.set(\zcr, sl.value.postln)});
-	cct_slider_lms = Knob(w, Rect(0, 00, 100, 5)).value_(1.0).action_({ |sl| synth_concate.set(\lms, sl.value.postln)});
-	cct_slider_sc  = Knob(w, Rect(0, 00, 100, 5)).value_(0.0).action_({ |sl| synth_concate.set(\sc,  sl.value.postln)});
-	cct_slider_st  = Knob(w, Rect(0, 00, 100, 5)).value_(0.0).action_({ |sl| synth_concate.set(\st,  sl.value.postln)});
+	cct_knob_zcr = Knob(w, Rect(0, 00, 100, 5)).value_(0.0).action_({ |sl| synth_concate.set(\zcr, sl.value.postln)});
+	cct_knob_lms = Knob(w, Rect(0, 00, 100, 5)).value_(1.0).action_({ |sl| synth_concate.set(\lms, sl.value.postln)});
+	cct_knob_sc  = Knob(w, Rect(0, 00, 100, 5)).value_(0.0).action_({ |sl| synth_concate.set(\sc,  sl.value.postln)});
+	cct_knob_st  = Knob(w, Rect(0, 00, 100, 5)).value_(0.0).action_({ |sl| synth_concate.set(\st,  sl.value.postln)});
 
 	cct_text_time = StaticText().string_("time").align_(\center).font_(font);
 	cct_text_dur  = StaticText().string_("dur ").align_(\center).font_(font);
 	cct_text_lens = StaticText().string_("lens").align_(\center).font_(font);
 	cct_text_rand = StaticText().string_("rand").align_(\center).font_(font);
 
-	cct_slider_time = Knob(w, Rect(0, 00, 100, 5)).value_(0.0).action_({ |sl| synth_concate.set(\seektime, sl.value.linlin(0, 1, 1, 5).postln)});
-	cct_slider_dur  = Knob(w, Rect(0, 00, 100, 5)).value_(0.0).action_({ |sl| synth_concate.set(\seekdur, sl.value.linlin(0, 1, 1, 5).postln)});
-	cct_slider_lens = Knob(w, Rect(0, 00, 100, 5)).value_(0.5).action_({ |sl| synth_concate.set(\matchlen, sl.value.linlin(0, 1, 0.0, 0.1).postln)});
-	cct_slider_rand = Knob(w, Rect(0, 00, 100, 5)).value_(0.0).action_({ |sl| synth_concate.set(\rand,  sl.value.linlin(0, 1, 0.0, 0.8).postln)});
+	cct_knob_time = Knob(w, Rect(0, 00, 100, 5)).value_(0.0).action_({ |sl| synth_concate.set(\seektime, sl.value.linlin(0, 1, 1, 5).postln)});
+	cct_knob_dur  = Knob(w, Rect(0, 00, 100, 5)).value_(0.0).action_({ |sl| synth_concate.set(\seekdur, sl.value.linlin(0, 1, 1, 5).postln)});
+	cct_knob_lens = Knob(w, Rect(0, 00, 100, 5)).value_(0.5).action_({ |sl| synth_concate.set(\matchlen, sl.value.linlin(0, 1, 0.0, 0.1).postln)});
+	cct_knob_rand = Knob(w, Rect(0, 00, 100, 5)).value_(0.0).action_({ |sl| synth_concate.set(\rand,  sl.value.linlin(0, 1, 0.0, 0.8).postln)});
 
 	cct_button_freeze = Button().states_([["freeze", Color.black, Color.white],
 		                                  ["sampling", Color.white, Color.new255(205.0, 140.0, 149.0)]]).action_({cct_func_freeze.value}).font_(font);
@@ -240,14 +257,14 @@ s.waitForBoot {
 
 	cct_button_reset = Button().states_([["reset"]]).action_({cct_func_reset.value}).font_(font);
 	cct_func_reset = {
-		cct_slider_zcr.value_(0.0);
-		cct_slider_lms.value_(1.0);
-		cct_slider_sc.value_(0.0);
-		cct_slider_st.value_(0.0);
-		cct_slider_time.value_(0.0);
-		cct_slider_dur.value_(0.0);
-		cct_slider_lens.value_(0.5);
-		cct_slider_rand.value_(0.0);
+		cct_knob_zcr.value_(0.0);
+		cct_knob_lms.value_(1.0);
+		cct_knob_sc.value_(0.0);
+		cct_knob_st.value_(0.0);
+		cct_knob_time.value_(0.0);
+		cct_knob_dur.value_(0.0);
+		cct_knob_lens.value_(0.5);
+		cct_knob_rand.value_(0.0);
 		synth_concate.set(\zcr, 0.0.postln);
 		synth_concate.set(\lms, 1.0.postln);
 		synth_concate.set(\sc,  0.0.postln);
@@ -258,16 +275,73 @@ s.waitForBoot {
 		synth_concate.set(\rand,  0.0.postln);
 	};
 
+
+
+	// utility components
+	util_text_ttl = StaticText().string_("Utility").align_(\top).font_(font);
+	util_button_record = Button(w, Rect(0, 00, 10, 5)).states_([["record", Color.black, Color.white],
+		                                  ["ing...", Color.white, Color.new255(205.0, 140.0, 149.0)]]).action_({util_func_record.value}).font_(font);
+	util_func_record = {
+		if ((util_button_record.value == 0), {
+			"stop recording...".postln;
+			// s.stopRecording;
+		});
+		if ((util_button_record.value == 1), {
+			"start recording...".postln;
+/*			s.prepareForRecord;
+			s.record;*/
+		});
+	};
+
+	util_button_play = Button(w, Rect(0, 00, 10, 5)).states_([["Stop", Color.black, Color.white],
+		                                  ["Start", Color.white, Color.new255(205.0, 140.0, 149.0)]]).action_({util_func_play.value}).font_(font);
+	util_func_play = {
+		if ((util_button_play.value == 0), {
+			"Start playing...".postln;
+			synth_output.set(\bus_out, bus_output);
+		});
+		if ((util_button_play.value == 1), {
+			"Stop playing...".postln;
+			synth_output.set(\bus_out, bus_silence);
+		});
+	};
+
+	util_button_stream = Button(w, Rect(0, 00, 10, 5)).states_([
+		                                  ["Output",  Color.black, Color.white],
+		                                  ["Source",  Color.white, Color.new255(205.0, 140.0, 149.0)],
+		                                  ["Control", Color.white, Color.new255(205.0, 140.0, 149.0)]
+	                                      ]).font_(font).action_({util_func_stream.value});
+	util_func_stream = {
+		if ((util_button_stream.value == 0), {
+			"Output".postln;
+			synth_output.set(\bus_in, bus_eq);
+		});
+		if ((util_button_stream.value == 1), {
+			"Source".postln;
+			synth_output.set(\bus_in, bus_source);
+		});
+		if ((util_button_stream.value == 2), {
+			"Control".postln;
+			synth_output.set(\bus_in, bus_control);
+		});
+	};
+
+
+
+	util_button_loadC = Button(w, Rect(0, 00, 10, 5)).states_([["loadC", Color.black, Color.white]]).action_({cct_func_freeze.value}).font_(font);
+    util_button_loadS = Button(w, Rect(0, 00, 10, 5)).states_([["loadS", Color.black, Color.white]]).action_({cct_func_freeze.value}).font_(font);
+
+
 	// layout of GUI
 	// concate synthesizer controll panel layout
-	layout_cct_zcr  = GridLayout.rows([cct_text_zcr, cct_slider_zcr]);
-	layout_cct_lms  = GridLayout.rows([cct_text_lms, cct_slider_lms]);
-	layout_cct_sc   = GridLayout.rows([cct_text_sc, cct_slider_sc]);
-	layout_cct_st   = GridLayout.rows([cct_text_st, cct_slider_st]);
-	layout_cct_time = GridLayout.rows([cct_text_time, cct_slider_time]);
-	layout_cct_dur  = GridLayout.rows([cct_text_dur, cct_slider_dur]);
-	layout_cct_lens = GridLayout.rows([cct_text_lens, cct_slider_lens]);
-	layout_cct_rand = GridLayout.rows([cct_text_rand, cct_slider_rand]);
+	layout_cct_zcr  = GridLayout.rows([cct_text_zcr, cct_knob_zcr]);
+	layout_cct_lms  = GridLayout.rows([cct_text_lms, cct_knob_lms]);
+	layout_cct_sc   = GridLayout.rows([cct_text_sc, cct_knob_sc]);
+	layout_cct_st   = GridLayout.rows([cct_text_st, cct_knob_st]);
+	layout_cct_time = GridLayout.rows([cct_text_time, cct_knob_time]);
+	layout_cct_dur  = GridLayout.rows([cct_text_dur, cct_knob_dur]);
+	layout_cct_lens = GridLayout.rows([cct_text_lens, cct_knob_lens]);
+	layout_cct_rand = GridLayout.rows([cct_text_rand, cct_knob_rand]);
 
 	layout_cct   = GridLayout.columns([cct_text_ttl, GridLayout.rows([layout_cct_zcr, layout_cct_time]), GridLayout.rows([layout_cct_lms, layout_cct_dur]),
 		GridLayout.rows([layout_cct_sc, layout_cct_lens]), GridLayout.rows([layout_cct_st, layout_cct_rand]), GridLayout.rows([cct_button_freeze, cct_button_reset])]);
@@ -279,8 +353,100 @@ s.waitForBoot {
 	// eq control panel layout
 	layout_eq    = GridLayout.columns([GridLayout.columns([eq_text_fb, GridLayout.rows(eq_slider_fb)]), eq_slider_rq, eq_button_reset]);
 
-	w.layout = GridLayout.columns([layout_scope, GridLayout.rows([layout_cct, layout_eq])]);
+	// utilities function panel layout
+	layout_util = GridLayout.columns([util_text_ttl, util_button_loadC, util_button_loadS, util_button_record, util_button_play, util_button_stream]);
+
+	w.layout = GridLayout.columns([layout_scope, GridLayout.rows([layout_cct, layout_eq, layout_util])]);
 }；
+)
+
+
+
+s.prepareForRecord; // if you want to start recording at a precise moment in time, you have to call this first.
+
+s.record(thisProcess.nowExecutingPath.dirname+/+"recording.wav");
+
+s.pauseRecording; // pausable
+
+s.record // start again
+
+s.stopRecording; // this closes the file and deallocates the buffer recording node, etc.
+
+x.free; // stop the synths
+
+
+
+
+
+(
+// create a ControlSpec for mapping values to correct range.
+~noteSpec = ControlSpec(24, 60, \lin, 1);
+// create slider and number views.
+~noteSlider = Slider(w, 200 @ 24);
+~noteNumBox = NumberBox(w, 64 @ 24);
+
+~noteSlider.step = 1/(60-24);
+~noteSlider.action = {|view|
+	var note;
+	note = ~noteSpec.map(view.value);
+	~noteNumBox.value = note;
+	s.sendMsg("/n_set", 9999, "note", note);
+};
+
+~noteNumBox.action = {|view|
+	var note;
+	note = view.value;
+	s.sendMsg("/n_set", 9999, "note", note);
+	~noteSlider.value = ~noteSpec.unmap(note);
+};
+~noteNumBox.align = \center;
+)
+
+
+(
+w = Window.new("a control panel", Rect(20, 400, 440, 360));
+w.front; // make window visible and front window.
+
+b = Button(w, 75 @ 24);
+b.states = [
+	["Red", Color.white, Color.red],
+	["Green", Color.black, Color.green],
+	["Blue", Color.white, Color.blue],
+	["Yellow", Color.black, Color.yellow]
+];
+b.action = {| view |
+	if (view.value == 0) { w.view.background = Color.yellow };
+	if (view.value == 1) { w.view.background = Color.red };
+	if (view.value == 2) { w.view.background = Color.green };
+	if (view.value == 3) { w.view.background = Color.blue };
+};
+)
+
+
+
+
+(
+// create a GUI window with some NumberBoxes.
+// You can command click (CocoaGUI) or control click (SwingGUI) on a control
+// to drag its value to another control
+var w, n, f, s;
+w = Window("number box test", Rect(128, 64, 260, 80));
+w.view.decorator = f = FlowLayout(w.view.bounds);
+
+n = NumberBox(w, Rect(0,0,80,24));
+n.value = 123;
+
+n = NumberBox(w, Rect(0,0,80,24));
+n.value = 456;
+
+n = DragBoth(w, Rect(0,0,80,24));
+n.object = 789;
+
+f.nextLine;
+
+s = Slider(w, Rect(0,0,240,24));
+
+w.front;
 )
 
 /*DarkSlateGrey  [ 47.0, 79.0, 79.0 ]
