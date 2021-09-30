@@ -9,7 +9,10 @@ s.reboot；
 var buf_ctrl, buf_src;
 var path_ctrl, path_src;
 var scope_ctrl, scope_src, scope_out, scope_text_ctrl, scope_text_src;
-var eq_slider_fb, eq_slider_rq, eq_text_fb, eq_text_rq, eq_button_reset, eq_func_reset;
+var in_text_ttl,
+    in_button_load, in_button_load_mode, in_slider_load_source_rate, in_slider_load_control_rate,
+	in_button_eval, in_button_eval_mode, in_textv_eval,
+	in_button_live, in_button_live_mode;
 var cct_text_ttl,
     cct_text_zcr, cct_text_lms, cct_text_sc, cct_text_st,
     cct_knob_zcr, cct_knob_lms, cct_knob_sc, cct_knob_st,
@@ -17,18 +20,30 @@ var cct_text_ttl,
     cct_knob_time, cct_knob_dur, cct_knob_lens, cct_knob_rand,
     cct_button_freeze, cct_func_freeze,
     cct_button_reset, cct_func_reset;
+var eq_slider_fb, eq_slider_rq, eq_text_fb, eq_text_rq, eq_button_reset, eq_func_reset;
+var rvb_text_ttl,
+	rvb_text_t60, rvb_text_damp, rvb_text_size, rvb_text_diff,
+	rvb_text_depth, rvb_text_freq, rvb_text_low, rvb_text_high,
+    rvb_knob_t60, rvb_knob_damp, rvb_knob_size, rvb_knob_diff,
+	rvb_knob_depth, rvb_knob_freq, rvb_knob_low, rvb_knob_high,
+    rvb_button_bypass, rvb_func_bypass,
+    rvb_button_reset, rvb_func_reset;
 var util_text_ttl,
     util_button_record, util_func_record,
     util_button_play, util_func_play,
     util_button_stream, util_func_stream,
-    util_button_loadC, util_button_loadS;
+    util_text_gain, util_knob_gaino, util_knob_gainc, util_knob_gains;
 var synth_control, synth_source, synth_concate, synth_eq, synth_rvrb, synth_output;
 var bufnum_ctrl, bufnum_src, bufnum_scope_ctrl, bufnum_scope_src, bufnum_scope_out;
 var bus_control, bus_source, bus_concat, bus_eq, bus_rvrb, bus_output, bus_silence;
+var layout_in_load, layout_in_eval, layout_in_live;
 var	layout_cct_zcr, layout_cct_lms, layout_cct_sc, layout_cct_st,
     layout_cct_time, layout_cct_dur, layout_cct_lens, layout_cct_rand;
-var layout_cct, layout_scope, layout_eq, layout_util;
-var font = Font("Silom", 14);
+var layout_rvb_t60, layout_rvb_damp, layout_rvb_size, layout_rvb_diff,
+	layout_rvb_depth, layout_rvb_freq, layout_rvb_low, layout_rvb_high;
+var layout_util_out, layout_util_gain;
+var layout_scope, layout_in, layout_cct, layout_eq, layout_rvb, layout_util;
+var font=Font("Silom", 14), ndef_fadetime=0.1;
 /*var load_audio;
 var dialog = Dialog.openPanel({ |list| make.(list) }, nil, true);*/
 
@@ -124,20 +139,14 @@ s.waitForBoot {
 		Out.ar(bus_out, Pan2.ar(sig, 0.0))
 	}).add;
 
+	// run input streams each with default samples
+	{Out.ar(bus_control, Ndef(\zy_control))}.play;
+	{Out.ar(bus_source,  Ndef(\zy_source))}.play;
+	Ndef(\zy_control).fadeTime = ndef_fadetime;
+	Ndef(\zy_source).fadeTime = ndef_fadetime;
+	Ndef(\zy_control, {PlayBuf.ar(1,bufnum_ctrl,BufRateScale.kr(bufnum_ctrl), loop:1)});
+	Ndef(\zy_source,  {PlayBuf.ar(1,bufnum_src,BufRateScale.kr(bufnum_src), loop:1)});
 
-/*	Ndef(\zy_source, {})
-	Ndef(\zy_control,{})
-
-
-
-
-
-	*/
-	//active the control and source audio stream
-	{Out.ar(bus_control, PlayBuf.ar(1,bufnum_ctrl,BufRateScale.kr(bufnum_ctrl), loop:1))}.play;
-	{Out.ar(bus_source, PlayBuf.ar(1,bufnum_src,BufRateScale.kr(bufnum_src), loop:1))}.play;
-/*	{Out.ar(bus_control, PinkNoise.ar(1))}.play;
-	{Out.ar(bus_source, PinkNoise.ar(1))}.play;*/
 
 	// run synths
 	synth_output  = Synth(\zy_output, [\bus_in, bus_eq, \bus_out, bus_output , \bufnum_scope, bufnum_scope_out]);
@@ -151,7 +160,7 @@ s.waitForBoot {
 	 */
 
 	// main window object
-	w = Window.new("concatenative sound synthesizer", Rect(200,200, 1000, 600));
+	w = Window.new("concatenative sound synthesizer", Rect(200,200, 800, 500));
 	w.view.background = Color.new255(205.0, 140.0, 149.0);
 	w.front;
 	CmdPeriod.doOnce {w.close};
@@ -161,6 +170,7 @@ s.waitForBoot {
 		synth_output.free;
 		Buffer.freeAll; // free all the buffer
 	}; //todo: free all synths here
+
 
 	// scopeviewer components
 	scope_text_ctrl = StaticText().string_("Control Signal").align_(\center).font_(font);
@@ -187,51 +197,28 @@ s.waitForBoot {
 	scope_out.start;
 	scope_out.style = 1;
 
-	// equalizer components
-	eq_text_fb = StaticText().string_("Equalizer").align_(\center).font_(font);
-	// eq_text_rq = StaticText().string_("Q Factor").align_(\center).font_(font);
-	// slider
-	eq_slider_fb = {Slider(w, Rect(0, 0, 5, 100)).value_(0.5)}!10;
-	eq_slider_rq = Slider(w, Rect(0, 00, 100, 10)).value_(0.31).action_({ |sl| synth_eq.set(\rq, sl.value.linlin(0, 1, 0.1, 3).postln)});
-	// reset button
-	eq_button_reset = Button().states_([["reset"]]).action_({eq_func_reset.value}).font_(font);
-	// related functions
-	eq_func_reset = {
-		eq_slider_rq.value_(0.31);
-		eq_slider_fb.do{ |sl| sl.value_(0.5)};
-        // todo find a better way to restore default setting
-		synth_eq.set(\amp1, 0.postln);
-		synth_eq.set(\amp2, 0.postln);
-		synth_eq.set(\amp3, 0.postln);
-		synth_eq.set(\amp4, 0.postln);
-		synth_eq.set(\amp5, 0.postln);
-		synth_eq.set(\amp6, 0.postln);
-		synth_eq.set(\amp7, 0.postln);
-		synth_eq.set(\amp8, 0.postln);
-		synth_eq.set(\amp9, 0.postln);
-		synth_eq.set(\amp10, 0.postln);
-		synth_eq.set(\rq, 0.8.postln)
-	};
-	eq_slider_fb.do{ |ins, c=0| c = c+1; ins.addAction({ |sl|
-	 	~sl = sl.value;
-	 	~low = -24;
-	 	~high = 24;
-	 	switch(c,
-	 		1, {synth_eq.set(\amp1, ~sl.linlin(0, 1, ~low, ~high).postln)},
-	 		2, {synth_eq.set(\amp2, ~sl.linlin(0, 1, ~low, ~high).postln)},
-	 		3, {synth_eq.set(\amp3, ~sl.linlin(0, 1, ~low, ~high).postln)},
-	 		4, {synth_eq.set(\amp4, ~sl.linlin(0, 1, ~low, ~high).postln)},
-	 		5, {synth_eq.set(\amp5, ~sl.linlin(0, 1, ~low, ~high).postln)},
-	 		6, {synth_eq.set(\amp6, ~sl.linlin(0, 1, ~low, ~high).postln)},
-	 		7, {synth_eq.set(\amp7, ~sl.linlin(0, 1, ~low, ~high).postln)},
-	 		8, {synth_eq.set(\amp8, ~sl.linlin(0, 1, ~low, ~high).postln)},
-	 		9, {synth_eq.set(\amp9, ~sl.linlin(0, 1, ~low, ~high).postln)},
-	 		10, {synth_eq.set(\amp10, ~sl.linlin(0, 1, ~low, ~high).postln)},
-	 	)});
-	 };
+
+	// input components
+	in_text_ttl = StaticText().string_("Inputs").align_(\top).font_(font);
+	// loading buffer components
+	in_button_load = Button().states_([["load"]]).action_({cct_func_reset.value}).font_(font);
+	in_button_load_mode = Button().states_([["control", Color.white, Color.new255(205.0, 140.0,149.0)],
+		                              ["source", Color.white, Color.new255(205.0, 140.0,149.0)]]).font_(font);
+	in_slider_load_source_rate = Slider(w, Rect(0, 00, 100, 10)).value_(0);
+	in_slider_load_control_rate = Slider(w, Rect(0, 00, 100, 10)).value_(0);
+	// evaluation components
+	in_button_eval = Button().states_([["eval"]]).action_({cct_func_reset.value}).font_(font);
+	in_button_eval_mode = Button().states_([["control", Color.white, Color.new255(205.0, 140.0,149.0)],
+		                              ["source", Color.white, Color.new255(205.0, 140.0,149.0)]]).font_(font);
+	in_textv_eval = TextView();
+	// live sampling components
+	in_button_live = Button().states_([["live"]]).action_({cct_func_reset.value}).font_(font);
+	in_button_live_mode = Button().states_([["control", Color.white, Color.new255(205.0, 140.0,149.0)],
+		                              ["source", Color.white, Color.new255(205.0, 140.0,149.0)]]).font_(font);
+
 
 	// concatenative synthesizer components
-	cct_text_ttl = StaticText().string_("Synthesizer").align_(\center).font_(font);
+	cct_text_ttl = StaticText().string_("Concatenator").align_(\top).font_(font);
 	cct_text_zcr = StaticText().string_("zcr").align_(\center).font_(font);
 	cct_text_lms = StaticText().string_("lms").align_(\center).font_(font);
 	cct_text_sc =  StaticText().string_("s_c").align_(\center).font_(font);
@@ -276,9 +263,104 @@ s.waitForBoot {
 	};
 
 
+	// equalizer components
+	eq_text_fb = StaticText().string_("Equalizer").align_(\center).font_(font);
+	// filter bank
+	eq_slider_fb = {Slider(w, Rect(0, 0, 5, 100)).value_(0.5)}!10;
+	eq_slider_rq = Slider(w, Rect(0, 00, 100, 10)).value_(0.31).action_({ |sl| synth_eq.set(\rq, sl.value.linlin(0, 1, 0.1, 3).postln)});
+	// reset button
+	eq_button_reset = Button().states_([["reset"]]).action_({eq_func_reset.value}).font_(font);
+	// related functions
+	eq_func_reset = {
+		eq_slider_rq.value_(0.31);
+		eq_slider_fb.do{ |sl| sl.value_(0.5)};
+        // todo find a better way to restore default setting
+		synth_eq.set(\amp1, 0.postln);
+		synth_eq.set(\amp2, 0.postln);
+		synth_eq.set(\amp3, 0.postln);
+		synth_eq.set(\amp4, 0.postln);
+		synth_eq.set(\amp5, 0.postln);
+		synth_eq.set(\amp6, 0.postln);
+		synth_eq.set(\amp7, 0.postln);
+		synth_eq.set(\amp8, 0.postln);
+		synth_eq.set(\amp9, 0.postln);
+		synth_eq.set(\amp10, 0.postln);
+		synth_eq.set(\rq, 0.8.postln)
+	};
+	eq_slider_fb.do{ |ins, c=0| c = c+1; ins.addAction({ |sl|
+	 	~sl = sl.value;
+	 	~low = -24;
+	 	~high = 24;
+	 	switch(c,
+	 		1, {synth_eq.set(\amp1, ~sl.linlin(0, 1, ~low, ~high).postln)},
+	 		2, {synth_eq.set(\amp2, ~sl.linlin(0, 1, ~low, ~high).postln)},
+	 		3, {synth_eq.set(\amp3, ~sl.linlin(0, 1, ~low, ~high).postln)},
+	 		4, {synth_eq.set(\amp4, ~sl.linlin(0, 1, ~low, ~high).postln)},
+	 		5, {synth_eq.set(\amp5, ~sl.linlin(0, 1, ~low, ~high).postln)},
+	 		6, {synth_eq.set(\amp6, ~sl.linlin(0, 1, ~low, ~high).postln)},
+	 		7, {synth_eq.set(\amp7, ~sl.linlin(0, 1, ~low, ~high).postln)},
+	 		8, {synth_eq.set(\amp8, ~sl.linlin(0, 1, ~low, ~high).postln)},
+	 		9, {synth_eq.set(\amp9, ~sl.linlin(0, 1, ~low, ~high).postln)},
+	 		10, {synth_eq.set(\amp10, ~sl.linlin(0, 1, ~low, ~high).postln)},
+	 	)});
+	 };
+
+
+
+
+
+
+
+
+
+	// internal reverb components
+	rvb_text_ttl = StaticText().string_("Reverb").align_(\top).font_(font);
+
+	rvb_text_t60   = StaticText().string_("T_60").align_(\center).font_(font);
+	rvb_text_damp  = StaticText().string_("damp").align_(\center).font_(font);
+	rvb_text_size  = StaticText().string_("size").align_(\center).font_(font);
+	rvb_text_diff  = StaticText().string_("diff").align_(\center).font_(font);
+	rvb_text_depth = StaticText().string_("dpth").align_(\center).font_(font);
+	rvb_text_freq  = StaticText().string_("freq").align_(\center).font_(font);
+	rvb_text_low   = StaticText().string_("low").align_(\center).font_(font);
+	rvb_text_high  = StaticText().string_("high").align_(\center).font_(font);
+
+	rvb_knob_t60   = Knob(w, Rect(0, 00, 100, 5)).value_(0.0);
+	rvb_knob_damp  = Knob(w, Rect(0, 00, 100, 5)).value_(0.0);
+	rvb_knob_size  = Knob(w, Rect(0, 00, 100, 5)).value_(0.0);
+	rvb_knob_diff  = Knob(w, Rect(0, 00, 100, 5)).value_(0.0);
+	rvb_knob_depth = Knob(w, Rect(0, 00, 100, 5)).value_(0.0);
+	rvb_knob_freq  = Knob(w, Rect(0, 00, 100, 5)).value_(0.0);
+	rvb_knob_low   = Knob(w, Rect(0, 00, 100, 5)).value_(0.0);
+	rvb_knob_high  = Knob(w, Rect(0, 00, 100, 5)).value_(0.0);
+
+	rvb_button_bypass = Button().states_([["bypass", Color.black, Color.white],
+		                                  ["connect", Color.white, Color.new255(205.0, 140.0, 149.0)]]).action_({cct_func_freeze.value}).font_(font);
+	rvb_func_bypass = {synth_concate.set(\freeze, cct_button_freeze.value.postln)};
+
+	rvb_button_reset = Button().states_([["reset"]]).action_({cct_func_reset.value}).font_(font);
+	rvb_func_reset = {
+/*		cct_knob_zcr.value_(0.0);
+		cct_knob_lms.value_(1.0);
+		cct_knob_sc.value_(0.0);
+		cct_knob_st.value_(0.0);
+		cct_knob_time.value_(0.0);
+		cct_knob_dur.value_(0.0);
+		cct_knob_lens.value_(0.5);
+		cct_knob_rand.value_(0.0);
+		synth_concate.set(\zcr, 0.0.postln);
+		synth_concate.set(\lms, 1.0.postln);
+		synth_concate.set(\sc,  0.0.postln);
+		synth_concate.set(\st,  0.0.postln);
+		synth_concate.set(\seektime, 0.0.postln);
+		synth_concate.set(\seekdur, 0.0.postln);
+		synth_concate.set(\matchlen,  0.5.postln);
+		synth_concate.set(\rand,  0.0.postln);*/
+	};
+
 
 	// utility components
-	util_text_ttl = StaticText().string_("Utility").align_(\top).font_(font);
+	util_text_ttl = StaticText().string_("Outputs").align_(\top).font_(font);
 	util_button_record = Button(w, Rect(0, 00, 10, 5)).states_([["record", Color.black, Color.white],
 		                                  ["ing...", Color.white, Color.new255(205.0, 140.0, 149.0)]]).action_({util_func_record.value}).font_(font);
 	util_func_record = {
@@ -325,14 +407,33 @@ s.waitForBoot {
 			synth_output.set(\bus_in, bus_control);
 		});
 	};
-
-
-
-	util_button_loadC = Button(w, Rect(0, 00, 10, 5)).states_([["loadC", Color.black, Color.white]]).action_({cct_func_freeze.value}).font_(font);
-    util_button_loadS = Button(w, Rect(0, 00, 10, 5)).states_([["loadS", Color.black, Color.white]]).action_({cct_func_freeze.value}).font_(font);
-
+	util_text_gain  = StaticText().string_("Gain").align_(\top).font_(font);
+	util_knob_gaino = Slider(w, Rect(0, 00, 5, 10));
+	util_knob_gainc = Slider(w, Rect(0, 00, 5, 10));
+    util_knob_gains = Slider(w, Rect(0, 00, 5, 10));
+	i = Image.open("/Users/yangzeyu/Desktop/designing system/marvin6.png");
+	q = Button(w, Rect(0, 00, 10, 5)).states_([
+		                                  ["Life?",  Color.black, Color.white],
+		                                  ["Don't",  Color.white, Color.new255(205.0, 140.0, 149.0)],
+		                                  ["talk", Color.white, Color.new255(205.0, 140.0, 149.0)],
+				                          ["to me",  Color.white, Color.new255(205.0, 140.0, 149.0)],
+		                                  ["About", Color.white, Color.new255(205.0, 140.0, 149.0)],
+				                          ["Life!",  Color.white, Color.new255(205.0, 140.0, 149.0)]
+	                                      ]).font_(font);
 
 	// layout of GUI
+	// audio scopeviewer layout
+	layout_scope = GridLayout.columns([GridLayout.rows([GridLayout.columns([scope_text_ctrl, scope_ctrl]),
+		           GridLayout.columns([scope_text_src, scope_src])]), scope_out]);
+
+	// input panel layout
+	layout_in_load = GridLayout.columns([GridLayout.rows([in_button_load, in_button_load_mode]),
+		                                 in_slider_load_source_rate, in_slider_load_control_rate  ]);
+	layout_in_eval = GridLayout.columns([GridLayout.rows([in_button_eval, in_button_eval_mode]), in_textv_eval]);
+	layout_in_live = GridLayout.rows([in_button_live, in_button_live_mode]);
+
+	layout_in = GridLayout.columns([in_text_ttl, layout_in_load, layout_in_eval, layout_in_live]);
+
 	// concate synthesizer controll panel layout
 	layout_cct_zcr  = GridLayout.rows([cct_text_zcr, cct_knob_zcr]);
 	layout_cct_lms  = GridLayout.rows([cct_text_lms, cct_knob_lms]);
@@ -346,108 +447,48 @@ s.waitForBoot {
 	layout_cct   = GridLayout.columns([cct_text_ttl, GridLayout.rows([layout_cct_zcr, layout_cct_time]), GridLayout.rows([layout_cct_lms, layout_cct_dur]),
 		GridLayout.rows([layout_cct_sc, layout_cct_lens]), GridLayout.rows([layout_cct_st, layout_cct_rand]), GridLayout.rows([cct_button_freeze, cct_button_reset])]);
 
-	// audio scopeviewer layout
-	layout_scope = GridLayout.columns([GridLayout.rows([GridLayout.columns([scope_text_ctrl, scope_src]),
-		           GridLayout.columns([scope_text_src, scope_ctrl])]), scope_out]);
 
 	// eq control panel layout
 	layout_eq    = GridLayout.columns([GridLayout.columns([eq_text_fb, GridLayout.rows(eq_slider_fb)]), eq_slider_rq, eq_button_reset]);
 
-	// utilities function panel layout
-	layout_util = GridLayout.columns([util_text_ttl, util_button_loadC, util_button_loadS, util_button_record, util_button_play, util_button_stream]);
 
-	w.layout = GridLayout.columns([layout_scope, GridLayout.rows([layout_cct, layout_eq, layout_util])]);
+	// concate synthesizer controll panel layout
+	layout_rvb_t60   = GridLayout.rows([rvb_text_t60, rvb_knob_t60]);
+	layout_rvb_damp  = GridLayout.rows([rvb_text_damp, rvb_knob_damp]);
+	layout_rvb_size  = GridLayout.rows([rvb_text_size, rvb_knob_size]);
+	layout_rvb_diff  = GridLayout.rows([rvb_text_diff, rvb_knob_diff]);
+	layout_rvb_depth = GridLayout.rows([rvb_text_depth, rvb_knob_depth]);
+	layout_rvb_freq  = GridLayout.rows([rvb_text_freq, rvb_knob_freq]);
+	layout_rvb_low   = GridLayout.rows([rvb_text_low, rvb_knob_low]);
+	layout_rvb_high  = GridLayout.rows([rvb_text_high, rvb_knob_high]);
+
+	layout_rvb = GridLayout.columns([rvb_text_ttl,
+		         GridLayout.rows([layout_rvb_t60, layout_rvb_damp]),
+		         GridLayout.rows([layout_rvb_size, layout_rvb_diff]),
+		         GridLayout.rows([layout_rvb_depth, layout_rvb_freq]),
+		         GridLayout.rows([layout_rvb_low, layout_rvb_high]),
+		         GridLayout.rows([rvb_button_bypass, rvb_button_reset])]);
+
+
+	// utilities function panel layout
+	layout_util_out  = GridLayout.columns([util_button_record, util_button_play, util_button_stream, q, i.plot(showInfo:false)]);
+	// layout_util_gain = GridLayout.columns([util_text_gain, GridLayout.rows([util_knob_gainc, util_knob_gains]), util_knob_gaino]);
+	layout_util_gain = GridLayout.rows([util_knob_gainc, util_knob_gaino, util_knob_gains]);
+	// layout_util = GridLayout.columns([util_text_ttl, layout_util_out, layout_util_gain]);
+	layout_util = GridLayout.columns([util_text_ttl,  GridLayout.rows([layout_util_gain, layout_util_out])    ]);
+
+	w.layout = GridLayout.columns([layout_scope, GridLayout.rows([layout_in, layout_cct, layout_eq, layout_rvb, layout_util])]);
 }；
 )
 
 
 
-s.prepareForRecord; // if you want to start recording at a precise moment in time, you have to call this first.
-
-s.record(thisProcess.nowExecutingPath.dirname+/+"recording.wav");
-
-s.pauseRecording; // pausable
-
-s.record // start again
-
-s.stopRecording; // this closes the file and deallocates the buffer recording node, etc.
-
-x.free; // stop the synths
 
 
-
-
-
-(
-// create a ControlSpec for mapping values to correct range.
-~noteSpec = ControlSpec(24, 60, \lin, 1);
-// create slider and number views.
-~noteSlider = Slider(w, 200 @ 24);
-~noteNumBox = NumberBox(w, 64 @ 24);
-
-~noteSlider.step = 1/(60-24);
-~noteSlider.action = {|view|
-	var note;
-	note = ~noteSpec.map(view.value);
-	~noteNumBox.value = note;
-	s.sendMsg("/n_set", 9999, "note", note);
-};
-
-~noteNumBox.action = {|view|
-	var note;
-	note = view.value;
-	s.sendMsg("/n_set", 9999, "note", note);
-	~noteSlider.value = ~noteSpec.unmap(note);
-};
-~noteNumBox.align = \center;
-)
-
-
-(
-w = Window.new("a control panel", Rect(20, 400, 440, 360));
-w.front; // make window visible and front window.
-
-b = Button(w, 75 @ 24);
-b.states = [
-	["Red", Color.white, Color.red],
-	["Green", Color.black, Color.green],
-	["Blue", Color.white, Color.blue],
-	["Yellow", Color.black, Color.yellow]
-];
-b.action = {| view |
-	if (view.value == 0) { w.view.background = Color.yellow };
-	if (view.value == 1) { w.view.background = Color.red };
-	if (view.value == 2) { w.view.background = Color.green };
-	if (view.value == 3) { w.view.background = Color.blue };
-};
-)
-
-
-
-
-(
-// create a GUI window with some NumberBoxes.
-// You can command click (CocoaGUI) or control click (SwingGUI) on a control
-// to drag its value to another control
-var w, n, f, s;
-w = Window("number box test", Rect(128, 64, 260, 80));
-w.view.decorator = f = FlowLayout(w.view.bounds);
-
-n = NumberBox(w, Rect(0,0,80,24));
-n.value = 123;
-
-n = NumberBox(w, Rect(0,0,80,24));
-n.value = 456;
-
-n = DragBoth(w, Rect(0,0,80,24));
-n.object = 789;
-
-f.nextLine;
-
-s = Slider(w, Rect(0,0,240,24));
-
-w.front;
-)
+Ndef(\zy_source, { SinOsc.ar(2)*Mix(Gendy3.ar(3,5,1.0,1.0,(Array.fill(5,{LFNoise0.kr(1.3.rand,1,2)})*MouseY.kr(100,3780,'exponential')),MouseY.kr(0.01,0.05),MouseY.kr(0.001,0.016),5,mul:0.1)) });
+Ndef(\zy_control, { SoundIn.ar });
+Ndef(\zy_control, { Silent.ar});
+Ndef(\zy_source, { SoundIn.ar });
 
 /*DarkSlateGrey  [ 47.0, 79.0, 79.0 ]
 LightPink3  [ 205.0, 140.0, 149.0 ]*/
