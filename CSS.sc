@@ -1,7 +1,6 @@
 s.boot；
 s.options.memSize_(65536 * 4); //according to the Note in JPverb
 s.reboot；
-
 (
 	/*
 * VARIABLES: all variables used in this synthesizer (with GUI)
@@ -12,7 +11,8 @@ var scope_ctrl, scope_src, scope_out, scope_text_ctrl, scope_text_src;
 var in_text_ttl,
     in_button_load, in_button_load_mode, in_slider_load_source_rate, in_slider_load_control_rate,
 	in_button_eval, in_button_eval_mode, in_textv_eval,
-	in_button_live, in_button_live_mode;
+	in_button_live, in_button_live_mode,
+    in_func_load, in_func_eval, in_func_live;
 var cct_text_ttl,
     cct_text_zcr, cct_text_lms, cct_text_sc, cct_text_st,
     cct_knob_zcr, cct_knob_lms, cct_knob_sc, cct_knob_st,
@@ -26,13 +26,14 @@ var rvb_text_ttl,
 	rvb_text_depth, rvb_text_freq, rvb_text_low, rvb_text_high,
     rvb_knob_t60, rvb_knob_damp, rvb_knob_size, rvb_knob_diff,
 	rvb_knob_depth, rvb_knob_freq, rvb_knob_low, rvb_knob_high,
-    rvb_button_bypass, rvb_func_bypass,
+    rvb_slider_mix,
     rvb_button_reset, rvb_func_reset;
 var util_text_ttl,
     util_button_record, util_func_record,
     util_button_play, util_func_play,
     util_button_stream, util_func_stream,
-    util_text_gain, util_knob_gaino, util_knob_gainc, util_knob_gains;
+    util_text_gain, util_text_gaino, util_text_gainc, util_text_gains,
+    util_knob_gaino, util_knob_gainc, util_knob_gains;
 var synth_control, synth_source, synth_concate, synth_eq, synth_rvrb, synth_output;
 var bufnum_ctrl, bufnum_src, bufnum_scope_ctrl, bufnum_scope_src, bufnum_scope_out;
 var bus_control, bus_source, bus_concat, bus_eq, bus_rvrb, bus_output, bus_silence;
@@ -44,8 +45,8 @@ var layout_rvb_t60, layout_rvb_damp, layout_rvb_size, layout_rvb_diff,
 var layout_util_out, layout_util_gain;
 var layout_scope, layout_in, layout_cct, layout_eq, layout_rvb, layout_util;
 var font=Font("Silom", 14), ndef_fadetime=0.1;
-/*var load_audio;
-var dialog = Dialog.openPanel({ |list| make.(list) }, nil, true);*/
+var button_marvin;
+var img_marvin = Image.open(thisProcess.nowExecutingPath.dirname+/+"marvin6.png");
 
 s.waitForBoot {
 	/*
@@ -74,11 +75,11 @@ s.waitForBoot {
 	bufnum_scope_out.postln;
 
 	// assign bus number
-	bus_control = 44;
-	bus_source  = 43;
+	bus_control = 84;
+	bus_source  = 73;
 	bus_concat  = 42;
-	bus_eq      = 41;
-	bus_rvrb    = 40;
+	bus_eq      = 51;
+	bus_rvrb    = 30;
 	bus_output  =  0;
 	bus_silence = 99;
 
@@ -92,11 +93,14 @@ s.waitForBoot {
 		    bus_control, bus_source, bus_concat,
 		    storesize=5.0, seektime=1.0, seekdur=1.0, matchlen=0.05, freeze=0,
 		    zcr=0.0, lms=1.0, sc=0.0, st=0.0,
-		    rand=0.0, thres=0.01;
+		    rand=0.0, thres=0.01,
+		    gainc=1.0, gains=1.0;
 		var concat, control, source;
 		//
 		control = In.ar(bus_control, 1);
-		source =  In.ar(bus_source, 1);
+		source  = In.ar(bus_source, 1);
+		control = control*gainc;
+		source  = source*gains;
 		// concatenative synthesis algorithm
 		concat= Concat2.ar(control, source, storesize, seektime, seekdur, matchlen, freeze, zcr, lms, sc, st, rand, thres);
 		// writing to scope buffer
@@ -112,8 +116,8 @@ s.waitForBoot {
 		    amp1 = 0, amp2 = 0, amp3 = 0, amp4 = 0, amp5 = 0,
 		    amp6 = 0, amp7 = 0, amp8 = 0, amp9 = 0, amp10 = 0,
 		    rq = 0.8;
-		var freq1=36,   freq2=75,     freq3=157,    freq4=329,   freq5=688,
-		    freq6=1440, freq7 = 3013, freq8 = 6303, freq9=13184, freq10=18000;
+		var freq1=36,   freq2=75,   freq3=157,  freq4=329,   freq5=688,
+		    freq6=1440, freq7=3013, freq8=6303, freq9=13184, freq10=18000;
 		var sig;
 		sig = In.ar(bus_in, 1);
 		sig = BPeakEQ.ar(sig, freq1, rq, amp1);
@@ -131,17 +135,32 @@ s.waitForBoot {
 		Out.ar(bus_out, sig)
 	}).add;
 
+	// reverb
+	SynthDef(\zy_reverb, {
+		arg bus_in, bus_out, mix_rate = 0.5,
+		    t60 = 1.0, damp = 0.0, size = 1, earlydiff = 0.707,
+		    mdepth = 0.1, mfreq = 2, lowband = 500, highband = 2000;
+		var sig_dry, sig_wet, sig_out;
+		sig_dry = Pan2.ar(In.ar(bus_in, 1));
+		sig_wet = JPverb.ar(sig_dry, t60, damp, size, earlydiff, mdepth, mfreq, 1, 1, lowband, highband);
+		sig_out = Mix([sig_dry * mix_rate, sig_wet * (1-mix_rate)]);
+		Out.ar(bus_out, sig_out)
+	}).add;
+
+
 	SynthDef(\zy_output, {
-		arg bus_in, bus_out, bufnum_scope;
+		arg bus_in, bus_out, bufnum_scope,
+		    gaino=1;
 		var sig;
-		sig = In.ar(bus_in, 1);
+		sig = In.ar(bus_in, 2);
+		sig = sig*gaino;
 		ScopeOut2.ar(Normalizer.ar(sig),  bufnum_scope);
-		Out.ar(bus_out, Pan2.ar(sig, 0.0))
+		Out.ar(bus_out, sig)
 	}).add;
 
 	// run input streams each with default samples
-	{Out.ar(bus_control, Ndef(\zy_control))}.play;
-	{Out.ar(bus_source,  Ndef(\zy_source))}.play;
+	{Out.ar(bus_control, Ndef(\zy_control).ar)}.play;。
+	{Out.ar(bus_source,  Ndef(\zy_source).ar)}.play;
 	Ndef(\zy_control).fadeTime = ndef_fadetime;
 	Ndef(\zy_source).fadeTime = ndef_fadetime;
 	Ndef(\zy_control, {PlayBuf.ar(1,bufnum_ctrl,BufRateScale.kr(bufnum_ctrl), loop:1)});
@@ -149,7 +168,8 @@ s.waitForBoot {
 
 
 	// run synths
-	synth_output  = Synth(\zy_output, [\bus_in, bus_eq, \bus_out, bus_output , \bufnum_scope, bufnum_scope_out]);
+	synth_output  = Synth(\zy_output, [\bus_in, bus_rvrb, \bus_out, bus_output , \bufnum_scope, bufnum_scope_out]);
+	synth_rvrb    = Synth(\zy_reverb, [\bus_in, bus_eq, \bus_out, bus_rvrb]);
 	synth_eq      = Synth(\zy_10eq, [\bus_in, bus_concat, \bus_out, bus_eq]);
 	synth_concate = Synth(\zy_concate, [\bufnum_scope_ctrl, bufnum_scope_ctrl, \bufnum_scope_src, bufnum_scope_src,
 		                  \bus_control, bus_control, \bus_source, bus_source, \bus_concat, bus_concat]);
@@ -168,8 +188,10 @@ s.waitForBoot {
 		synth_concate.free;
 		synth_eq.free;
 		synth_output.free;
+		synth_rvrb.free;
 		Buffer.freeAll; // free all the buffer
-	}; //todo: free all synths here
+		Ndef.clear;
+	};
 
 
 	// scopeviewer components
@@ -201,20 +223,46 @@ s.waitForBoot {
 	// input components
 	in_text_ttl = StaticText().string_("Inputs").align_(\top).font_(font);
 	// loading buffer components
-	in_button_load = Button().states_([["load"]]).action_({cct_func_reset.value}).font_(font);
+	in_button_load = Button().states_([["load"]]).action_({in_func_load.value}).font_(font);
 	in_button_load_mode = Button().states_([["control", Color.white, Color.new255(205.0, 140.0,149.0)],
 		                              ["source", Color.white, Color.new255(205.0, 140.0,149.0)]]).font_(font);
 	in_slider_load_source_rate = Slider(w, Rect(0, 00, 100, 10)).value_(0);
 	in_slider_load_control_rate = Slider(w, Rect(0, 00, 100, 10)).value_(0);
+	in_func_load = {};
+
+
+
+
+
 	// evaluation components
-	in_button_eval = Button().states_([["eval"]]).action_({cct_func_reset.value}).font_(font);
+	in_button_eval = Button().states_([["eval"]]).action_({in_func_eval.value}).font_(font);
 	in_button_eval_mode = Button().states_([["control", Color.white, Color.new255(205.0, 140.0,149.0)],
 		                              ["source", Color.white, Color.new255(205.0, 140.0,149.0)]]).font_(font);
-	in_textv_eval = TextView();
+	in_textv_eval = TextView().string_("Saw.ar(SinOsc.kr(LFNoise0.kr(0.1,3,4.5),0,10,30))");
+	in_func_eval = {
+		in_button_eval_mode.value.postln;
+		if ((in_button_eval_mode.value == 0), {
+
+			Ndef(\zy_control, {in_textv_eval.string.interpret.asArray});
+		});
+		if ((in_button_eval_mode.value == 1), {
+			Ndef(\zy_source, {in_textv_eval.string.interpret.asArray});
+		});
+	};
+
 	// live sampling components
-	in_button_live = Button().states_([["live"]]).action_({cct_func_reset.value}).font_(font);
+	in_button_live = Button().states_([["live"]]).action_({in_func_live.value}).font_(font);
 	in_button_live_mode = Button().states_([["control", Color.white, Color.new255(205.0, 140.0,149.0)],
 		                              ["source", Color.white, Color.new255(205.0, 140.0,149.0)]]).font_(font);
+	in_func_live = {
+		in_button_live_mode.value.postln;
+		if ((in_button_live_mode.value == 0), {
+			Ndef(\zy_control, { SoundIn.ar });
+		});
+		if ((in_button_live_mode.value == 1), {
+			Ndef(\zy_source, { SoundIn.ar });
+		});
+	};
 
 
 	// concatenative synthesizer components
@@ -306,13 +354,6 @@ s.waitForBoot {
 	 };
 
 
-
-
-
-
-
-
-
 	// internal reverb components
 	rvb_text_ttl = StaticText().string_("Reverb").align_(\top).font_(font);
 
@@ -325,38 +366,40 @@ s.waitForBoot {
 	rvb_text_low   = StaticText().string_("low").align_(\center).font_(font);
 	rvb_text_high  = StaticText().string_("high").align_(\center).font_(font);
 
-	rvb_knob_t60   = Knob(w, Rect(0, 00, 100, 5)).value_(0.0);
-	rvb_knob_damp  = Knob(w, Rect(0, 00, 100, 5)).value_(0.0);
-	rvb_knob_size  = Knob(w, Rect(0, 00, 100, 5)).value_(0.0);
-	rvb_knob_diff  = Knob(w, Rect(0, 00, 100, 5)).value_(0.0);
-	rvb_knob_depth = Knob(w, Rect(0, 00, 100, 5)).value_(0.0);
-	rvb_knob_freq  = Knob(w, Rect(0, 00, 100, 5)).value_(0.0);
-	rvb_knob_low   = Knob(w, Rect(0, 00, 100, 5)).value_(0.0);
-	rvb_knob_high  = Knob(w, Rect(0, 00, 100, 5)).value_(0.0);
+	rvb_knob_t60   = Knob(w, Rect(0, 00, 100, 5)).value_(0.091).action_({ |sl| synth_rvrb.set(\t60, sl.value.linlin(0, 1, 0.1, 10).postln)});
+	rvb_knob_damp  = Knob(w, Rect(0, 00, 100, 5)).value_(0.0).action_({ |sl| synth_rvrb.set(\damp, sl.value.linlin(0, 1, 0, 1).postln)});
+	rvb_knob_size  = Knob(w, Rect(0, 00, 100, 5)).value_(0.3).action_({ |sl| synth_rvrb.set(\size, sl.value.linlin(0, 1, 0.5, 5).postln)});
+	rvb_knob_diff  = Knob(w, Rect(0, 00, 100, 5)).value_(0.707).action_({ |sl| synth_rvrb.set(\earlydiff, sl.value.linlin(0, 1, 0, 1).postln)});
+	rvb_knob_depth = Knob(w, Rect(0, 00, 100, 5)).value_(0.1).action_({ |sl| synth_rvrb.set(\mdepth, sl.value.linlin(0, 1, 0, 1).postln)});
+	rvb_knob_freq  = Knob(w, Rect(0, 00, 100, 5)).value_(0.2).action_({ |sl| synth_rvrb.set(\mfreq, sl.value.linlin(0, 1, 0, 10).postln)});
+	rvb_knob_low   = Knob(w, Rect(0, 00, 100, 5)).value_(0.39).action_({ |sl| synth_rvrb.set(\lowband, sl.value.linlin(0, 1, 100, 6000).postln)});
+	rvb_knob_high  = Knob(w, Rect(0, 00, 100, 5)).value_(0.3).action_({ |sl| synth_rvrb.set(\highband, sl.value.linlin(0, 1, 1000, 10000).postln)});
 
-	rvb_button_bypass = Button().states_([["bypass", Color.black, Color.white],
-		                                  ["connect", Color.white, Color.new255(205.0, 140.0, 149.0)]]).action_({cct_func_freeze.value}).font_(font);
-	rvb_func_bypass = {synth_concate.set(\freeze, cct_button_freeze.value.postln)};
+	rvb_slider_mix = Slider(w, Rect(0, 00, 100, 10)).value_(0.5).action_({ |sl| synth_rvrb.set(\mix_rate, sl.value.linlin(0, 1, 0, 1).postln)});
 
-	rvb_button_reset = Button().states_([["reset"]]).action_({cct_func_reset.value}).font_(font);
+	rvb_button_reset = Button().states_([["reset"]]).action_({rvb_func_reset.value}).font_(font);
 	rvb_func_reset = {
-/*		cct_knob_zcr.value_(0.0);
-		cct_knob_lms.value_(1.0);
-		cct_knob_sc.value_(0.0);
-		cct_knob_st.value_(0.0);
-		cct_knob_time.value_(0.0);
-		cct_knob_dur.value_(0.0);
-		cct_knob_lens.value_(0.5);
-		cct_knob_rand.value_(0.0);
-		synth_concate.set(\zcr, 0.0.postln);
-		synth_concate.set(\lms, 1.0.postln);
-		synth_concate.set(\sc,  0.0.postln);
-		synth_concate.set(\st,  0.0.postln);
-		synth_concate.set(\seektime, 0.0.postln);
-		synth_concate.set(\seekdur, 0.0.postln);
-		synth_concate.set(\matchlen,  0.5.postln);
-		synth_concate.set(\rand,  0.0.postln);*/
+		rvb_knob_t60.value_(0.091);
+		rvb_knob_damp.value_(0.0);
+		rvb_knob_size.value_(0.3);
+		rvb_knob_diff.value_(0.707);
+		rvb_knob_depth.value_(0.1);
+		rvb_knob_freq.value_(0.2);
+		rvb_knob_low.value_(0.39);
+		rvb_knob_high.value_(0.3);
+		synth_rvrb.set(\t60, 0.091.linlin(0, 1, 0.1, 10).postln);
+		synth_rvrb.set(\damp, 0.0.linlin(0, 1, 0, 1).postln);
+		synth_rvrb.set(\size,  0.3.linlin(0, 1, 0.5, 5).postln);
+		synth_rvrb.set(\earlydiff,  0.707.linlin(0, 1, 0, 1).postln);
+		synth_rvrb.set(\mdepth, 0.1.linlin(0, 1, 0, 1).postln);
+		synth_rvrb.set(\mfreq, 0.2.linlin(0, 1, 0, 10).postln);
+		synth_rvrb.set(\lowband,  0.39.linlin(0, 1, 100, 6000).postln);
+		synth_rvrb.set(\highband,  0.3.linlin(0, 1, 1000, 10000).postln);
+
+		rvb_slider_mix.value_(0.5);
+		synth_rvrb.set(\mix_rate,  0.5.postln);
 	};
+
 
 
 	// utility components
@@ -396,7 +439,7 @@ s.waitForBoot {
 	util_func_stream = {
 		if ((util_button_stream.value == 0), {
 			"Output".postln;
-			synth_output.set(\bus_in, bus_eq);
+			synth_output.set(\bus_in, bus_rvrb);
 		});
 		if ((util_button_stream.value == 1), {
 			"Source".postln;
@@ -408,11 +451,13 @@ s.waitForBoot {
 		});
 	};
 	util_text_gain  = StaticText().string_("Gain").align_(\top).font_(font);
-	util_knob_gaino = Slider(w, Rect(0, 00, 5, 10));
-	util_knob_gainc = Slider(w, Rect(0, 00, 5, 10));
-    util_knob_gains = Slider(w, Rect(0, 00, 5, 10));
-	i = Image.open("/Users/yangzeyu/Desktop/designing system/marvin6.png");
-	q = Button(w, Rect(0, 00, 10, 5)).states_([
+	util_text_gainc  = StaticText().string_("C").align_(\top).font_(font);
+	util_text_gaino  = StaticText().string_("O").align_(\top).font_(font);
+	util_text_gains  = StaticText().string_("S").align_(\top).font_(font);
+	util_knob_gainc = Slider(w, Rect(0, 00, 5, 10)).value_(0.5).action_({ |sl| synth_concate.set(\gainc, sl.value.linlin(0, 1, 0, 2).postln)});
+	util_knob_gaino = Slider(w, Rect(0, 00, 5, 10)).value_(0.5).action_({ |sl| synth_output.set(\gaino, sl.value.linlin(0, 1, 0, 2).postln)});
+    util_knob_gains = Slider(w, Rect(0, 00, 5, 10)).value_(0.5).action_({ |sl| synth_concate.set(\gains, sl.value.linlin(0, 1, 0, 2).postln)});
+	button_marvin = Button(w, Rect(0, 00, 10, 5)).states_([
 		                                  ["Life?",  Color.black, Color.white],
 		                                  ["Don't",  Color.white, Color.new255(205.0, 140.0, 149.0)],
 		                                  ["talk", Color.white, Color.new255(205.0, 140.0, 149.0)],
@@ -420,6 +465,7 @@ s.waitForBoot {
 		                                  ["About", Color.white, Color.new255(205.0, 140.0, 149.0)],
 				                          ["Life!",  Color.white, Color.new255(205.0, 140.0, 149.0)]
 	                                      ]).font_(font);
+
 
 	// layout of GUI
 	// audio scopeviewer layout
@@ -467,19 +513,35 @@ s.waitForBoot {
 		         GridLayout.rows([layout_rvb_size, layout_rvb_diff]),
 		         GridLayout.rows([layout_rvb_depth, layout_rvb_freq]),
 		         GridLayout.rows([layout_rvb_low, layout_rvb_high]),
-		         GridLayout.rows([rvb_button_bypass, rvb_button_reset])]);
+		         GridLayout.rows([rvb_slider_mix, rvb_button_reset])]);
 
 
 	// utilities function panel layout
-	layout_util_out  = GridLayout.columns([util_button_record, util_button_play, util_button_stream, q, i.plot(showInfo:false)]);
+	layout_util_out  = GridLayout.columns([util_button_record, util_button_play, util_button_stream, button_marvin, img_marvin.plot(showInfo:false)]);
 	// layout_util_gain = GridLayout.columns([util_text_gain, GridLayout.rows([util_knob_gainc, util_knob_gains]), util_knob_gaino]);
-	layout_util_gain = GridLayout.rows([util_knob_gainc, util_knob_gaino, util_knob_gains]);
+	// layout_util_gain = GridLayout.rows([util_knob_gainc, util_knob_gaino, util_knob_gains]);
+	layout_util_gain = GridLayout.rows([GridLayout.columns([util_knob_gainc, util_text_gainc]),
+		                                GridLayout.columns([util_knob_gaino, util_text_gaino]),
+		                                GridLayout.columns([util_knob_gains, util_text_gains])]);
+
 	// layout_util = GridLayout.columns([util_text_ttl, layout_util_out, layout_util_gain]);
 	layout_util = GridLayout.columns([util_text_ttl,  GridLayout.rows([layout_util_gain, layout_util_out])    ]);
 
 	w.layout = GridLayout.columns([layout_scope, GridLayout.rows([layout_in, layout_cct, layout_eq, layout_rvb, layout_util])]);
 }；
 )
+
+/*			    t60 = 1.0, damp = 0.0, size = 1, earlydiff = 0.707,
+		    mdepth = 0.1, mfreq = 2, lowband = 500, highband = 2000;*/
+
+/*0.091.linlin(0, 1, 0.1, 10).postln;
+0.0.linlin(0, 1, 0, 1).postln;
+0.3.linexp(0, 1, 0.5, 5).postln;
+0.707.linlin(0, 1, 0, 1).postln;
+0.1.linlin(0, 1, 0, 1).postln;
+0.2.linlin(0, 1, 0, 10).postln;
+0.39.linexp(0, 1, 100, 6000).postln;
+0.3.linexp(0, 1, 1000, 10000).postln;*/
 
 
 
