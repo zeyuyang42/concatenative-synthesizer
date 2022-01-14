@@ -1,16 +1,21 @@
 s.boot；
-s.options.memSize_(65536 * 4); //according to the Note in JPverb
+s.options.sampleRate = 44100;  // in case of sample rate mismatchi, mostly caused by Zoom's default 48000Hz setting
+s.options.memSize_(65536 * 4); // according to the Note in JPverb
 s.reboot；
 (
 	/*
-* VARIABLES: all variables used in this synthesizer (with GUI)
+     * VARIABLES: all variables used in this synthesizer (with GUI)
 	 */
-var buf_ctrl, buf_src;
+var buf_ctrl, buf_src, buf_rcd;
 var path_ctrl, path_src;
 var scope_ctrl, scope_src, scope_out, scope_text_ctrl, scope_text_src;
 var in_text_ttl,
-    in_button_load, in_button_load_mode, in_slider_load_source_rate, in_slider_load_control_rate,
-	in_button_eval, in_button_eval_mode, in_textv_eval,
+// in_text_source, in_text_control,
+    in_button_s_reset, in_button_c_reset,
+    in_button_load, in_button_load_mode,
+    in_textv_source, in_textv_control,in_button_stretch_source,in_button_stretch_control,
+    in_func_stretch_source, in_func_stretch_control,
+    in_button_eval, in_button_eval_mode, in_textv_eval,
 	in_button_live, in_button_live_mode,
     in_func_load, in_func_eval, in_func_live;
 var cct_text_ttl,
@@ -45,6 +50,7 @@ var layout_rvb_t60, layout_rvb_damp, layout_rvb_size, layout_rvb_diff,
 var layout_util_out, layout_util_gain;
 var layout_scope, layout_in, layout_cct, layout_eq, layout_rvb, layout_util;
 var font=Font("Silom", 14), ndef_fadetime=0.1;
+var buf_readrate_ctrl = 1, buf_readrate_src = 1;
 var button_marvin;
 var img_marvin = Image.open(thisProcess.nowExecutingPath.dirname+/+"marvin6.png");
 
@@ -53,13 +59,14 @@ s.waitForBoot {
 	 * DATASTORE: define buffers
 	 */
 
-	//load default audio      //todo: use dialog input instead
+	//load default audio
 	path_ctrl = thisProcess.nowExecutingPath.dirname+/+"demo_control.wav";
 	path_src = thisProcess.nowExecutingPath.dirname+/+"demo_source.wav";
 
-	// use only only channel 0 as input
+	// use only channel 0 as input
 	buf_ctrl = Buffer.readChannel(s, path_ctrl, channels: 0);
 	buf_src  = Buffer.readChannel(s, path_src, channels: 0);
+	buf_rcd  = Buffer.alloc(s, 44100 * 10.0, 1);
 
 	bufnum_ctrl = buf_ctrl.bufnum;
 	bufnum_src = buf_src.bufnum;
@@ -67,12 +74,6 @@ s.waitForBoot {
 	bufnum_scope_ctrl = Buffer.alloc(s, 1024, 1).bufnum;
 	bufnum_scope_src  = Buffer.alloc(s, 1024, 1).bufnum;
 	bufnum_scope_out  = Buffer.alloc(s, 1024, 1).bufnum;
-
-	bufnum_ctrl.postln;
-	bufnum_src.postln;
-	bufnum_scope_ctrl.postln;
-	bufnum_scope_src.postln;
-	bufnum_scope_out.postln;
 
 	// assign bus number
 	bus_control = 84;
@@ -82,6 +83,14 @@ s.waitForBoot {
 	bus_rvrb    = 30;
 	bus_output  =  0;
 	bus_silence = 99;
+
+
+
+	// instantiate the Recorder
+	r = Recorder.new(s);
+	r.filePrefix = "SuperCollider_";
+	r.recHeaderFormat = "wav";
+	thisProcess.platform.recordingsDir = thisProcess.nowExecutingPath.dirname+/+"recordings";
 
 	/*
 	 * SYNTHESIZER: main audio processing pipeline of concatenative sound synthesizer
@@ -107,7 +116,7 @@ s.waitForBoot {
 		ScopeOut2.ar(Normalizer.ar(control), bufnum_scope_ctrl);
 		ScopeOut2.ar(Normalizer.ar(source),  bufnum_scope_src);
 		// writing to output bus
-		Out.ar(bus_concat, concat) // remove this after debugging
+		Out.ar(bus_concat, concat)
 		}).add;
 
 	// 10-band EQ
@@ -147,7 +156,7 @@ s.waitForBoot {
 		Out.ar(bus_out, sig_out)
 	}).add;
 
-
+	// output control
 	SynthDef(\zy_output, {
 		arg bus_in, bus_out, bufnum_scope,
 		    gaino=1;
@@ -163,14 +172,13 @@ s.waitForBoot {
 	{Out.ar(bus_source,  Ndef(\zy_source).ar)}.play;
 	Ndef(\zy_control).fadeTime = ndef_fadetime;
 	Ndef(\zy_source).fadeTime = ndef_fadetime;
-	Ndef(\zy_control, {PlayBuf.ar(1,bufnum_ctrl,BufRateScale.kr(bufnum_ctrl), loop:1)});
-	Ndef(\zy_source,  {PlayBuf.ar(1,bufnum_src,BufRateScale.kr(bufnum_src), loop:1)});
-
+	Ndef(\zy_control, {PlayBuf.ar(1, bufnum_ctrl, 1, loop:1)});
+	Ndef(\zy_source,  {PlayBuf.ar(1, bufnum_src,  1 , loop:1)});
 
 	// run synths
-	synth_output  = Synth(\zy_output, [\bus_in, bus_rvrb, \bus_out, bus_output , \bufnum_scope, bufnum_scope_out]);
-	synth_rvrb    = Synth(\zy_reverb, [\bus_in, bus_eq, \bus_out, bus_rvrb]);
-	synth_eq      = Synth(\zy_10eq, [\bus_in, bus_concat, \bus_out, bus_eq]);
+	synth_output  = Synth(\zy_output,  [\bus_in, bus_rvrb, \bus_out, bus_output , \bufnum_scope, bufnum_scope_out]);
+	synth_rvrb    = Synth(\zy_reverb,  [\bus_in, bus_eq, \bus_out, bus_rvrb]);
+	synth_eq      = Synth(\zy_10eq,    [\bus_in, bus_concat, \bus_out, bus_eq]);
 	synth_concate = Synth(\zy_concate, [\bufnum_scope_ctrl, bufnum_scope_ctrl, \bufnum_scope_src, bufnum_scope_src,
 		                  \bus_control, bus_control, \bus_source, bus_source, \bus_concat, bus_concat]);
 
@@ -189,8 +197,8 @@ s.waitForBoot {
 		synth_eq.free;
 		synth_output.free;
 		synth_rvrb.free;
-		Buffer.freeAll; // free all the buffer
 		Ndef.clear;
+		Buffer.freeAll; // free all the buffer
 	};
 
 
@@ -222,17 +230,76 @@ s.waitForBoot {
 
 	// input components
 	in_text_ttl = StaticText().string_("Inputs").align_(\top).font_(font);
-	// loading buffer components
+
+	in_button_s_reset = Button().states_([["reset"]]).action_({}).font_(font);
+	in_button_c_reset= Button().states_([["reset"]]).action_({}).font_(font);
+
 	in_button_load = Button().states_([["load"]]).action_({in_func_load.value}).font_(font);
 	in_button_load_mode = Button().states_([["control", Color.white, Color.new255(205.0, 140.0,149.0)],
 		                              ["source", Color.white, Color.new255(205.0, 140.0,149.0)]]).font_(font);
-	in_slider_load_source_rate = Slider(w, Rect(0, 00, 100, 10)).value_(0);
-	in_slider_load_control_rate = Slider(w, Rect(0, 00, 100, 10)).value_(0);
-	in_func_load = {};
+
+	in_textv_source  = TextView();
+	in_textv_control = TextView();
+	in_button_stretch_source   = Button().states_([["setS"]]).action_({in_func_stretch_source.value}).font_(font);
+	in_button_stretch_control  = Button().states_([["setC"]]).action_({in_func_stretch_control.value}).font_(font);
 
 
+	in_func_stretch_source = {
+		in_textv_source.string.postln;
+		Ndef(\zy_source, {var pointer; var replaytime;
+			replaytime = in_textv_source.string.interpret;
+			replaytime.postln;
+			pointer = LFSaw.ar(1/replaytime).range(0, 1);
+			Warp1.ar(
+				numChannels:1,
+				bufnum:bufnum_src,
+				pointer:pointer,
+				freqScale:1,
+				windowSize:0.1,
+				envbufnum:-1,
+				overlaps:8,
+				windowRandRatio:0.1,
+				interp:2
+		)});
+	};
+	in_func_stretch_control = {
+		in_textv_control.string.postln;
+		Ndef(\zy_control, {var pointer; var replaytime;
+			replaytime = in_textv_control.string.interpret;
+			replaytime.postln;
+			pointer = LFSaw.ar(1/replaytime).range(0, 1);
+			Warp1.ar(
+				numChannels:1,
+				bufnum:bufnum_ctrl,
+				pointer:pointer,
+				freqScale:1,
+				windowSize:0.1,
+				envbufnum:-1,
+				overlaps:8,
+				windowRandRatio:0.1,
+				interp:2
+		)});
+	};
 
-
+	in_func_load = {
+		in_button_load_mode.value.postln;
+		Dialog.openPanel({ |file| m.(file, in_button_load_mode.value) }, nil, false);
+	};
+	m = {
+		|path, mode|
+		[\loaded, path].postln;
+		["mode: ", mode].postln;
+		if ((in_button_load_mode.value == 0), {
+			buf_ctrl.free;
+			buf_ctrl = Buffer.readChannel(s, path, channels: 0);
+			Ndef(\zy_control, {PlayBuf.ar(1,bufnum_ctrl, 1, loop:1)});
+		});
+		if ((in_button_load_mode.value == 1), {
+			buf_src.free;
+			buf_src = Buffer.readChannel(s, path, channels: 0);
+			Ndef(\zy_source,  {PlayBuf.ar(1,bufnum_src, 1, loop:1)});
+		});
+	};
 
 	// evaluation components
 	in_button_eval = Button().states_([["eval"]]).action_({in_func_eval.value}).font_(font);
@@ -242,7 +309,6 @@ s.waitForBoot {
 	in_func_eval = {
 		in_button_eval_mode.value.postln;
 		if ((in_button_eval_mode.value == 0), {
-
 			Ndef(\zy_control, {in_textv_eval.string.interpret.asArray});
 		});
 		if ((in_button_eval_mode.value == 1), {
@@ -322,7 +388,7 @@ s.waitForBoot {
 	eq_func_reset = {
 		eq_slider_rq.value_(0.31);
 		eq_slider_fb.do{ |sl| sl.value_(0.5)};
-        // todo find a better way to restore default setting
+        // todo: find a better way to restore default setting
 		synth_eq.set(\amp1, 0.postln);
 		synth_eq.set(\amp2, 0.postln);
 		synth_eq.set(\amp3, 0.postln);
@@ -368,12 +434,12 @@ s.waitForBoot {
 
 	rvb_knob_t60   = Knob(w, Rect(0, 00, 100, 5)).value_(0.091).action_({ |sl| synth_rvrb.set(\t60, sl.value.linlin(0, 1, 0.1, 10).postln)});
 	rvb_knob_damp  = Knob(w, Rect(0, 00, 100, 5)).value_(0.0).action_({ |sl| synth_rvrb.set(\damp, sl.value.linlin(0, 1, 0, 1).postln)});
-	rvb_knob_size  = Knob(w, Rect(0, 00, 100, 5)).value_(0.3).action_({ |sl| synth_rvrb.set(\size, sl.value.linlin(0, 1, 0.5, 5).postln)});
+	rvb_knob_size  = Knob(w, Rect(0, 00, 100, 5)).value_(0.3).action_({ |sl| synth_rvrb.set(\size, sl.value.linexp(0, 1, 0.5, 5).postln)});
 	rvb_knob_diff  = Knob(w, Rect(0, 00, 100, 5)).value_(0.707).action_({ |sl| synth_rvrb.set(\earlydiff, sl.value.linlin(0, 1, 0, 1).postln)});
 	rvb_knob_depth = Knob(w, Rect(0, 00, 100, 5)).value_(0.1).action_({ |sl| synth_rvrb.set(\mdepth, sl.value.linlin(0, 1, 0, 1).postln)});
 	rvb_knob_freq  = Knob(w, Rect(0, 00, 100, 5)).value_(0.2).action_({ |sl| synth_rvrb.set(\mfreq, sl.value.linlin(0, 1, 0, 10).postln)});
-	rvb_knob_low   = Knob(w, Rect(0, 00, 100, 5)).value_(0.39).action_({ |sl| synth_rvrb.set(\lowband, sl.value.linlin(0, 1, 100, 6000).postln)});
-	rvb_knob_high  = Knob(w, Rect(0, 00, 100, 5)).value_(0.3).action_({ |sl| synth_rvrb.set(\highband, sl.value.linlin(0, 1, 1000, 10000).postln)});
+	rvb_knob_low   = Knob(w, Rect(0, 00, 100, 5)).value_(0.39).action_({ |sl| synth_rvrb.set(\lowband, sl.value.linexp(0, 1, 100, 6000).postln)});
+	rvb_knob_high  = Knob(w, Rect(0, 00, 100, 5)).value_(0.3).action_({ |sl| synth_rvrb.set(\highband, sl.value.linexp(0, 1, 1000, 10000).postln)});
 
 	rvb_slider_mix = Slider(w, Rect(0, 00, 100, 10)).value_(0.5).action_({ |sl| synth_rvrb.set(\mix_rate, sl.value.linlin(0, 1, 0, 1).postln)});
 
@@ -389,18 +455,16 @@ s.waitForBoot {
 		rvb_knob_high.value_(0.3);
 		synth_rvrb.set(\t60, 0.091.linlin(0, 1, 0.1, 10).postln);
 		synth_rvrb.set(\damp, 0.0.linlin(0, 1, 0, 1).postln);
-		synth_rvrb.set(\size,  0.3.linlin(0, 1, 0.5, 5).postln);
+		synth_rvrb.set(\size,  0.3.linexp(0, 1, 0.5, 5).postln);
 		synth_rvrb.set(\earlydiff,  0.707.linlin(0, 1, 0, 1).postln);
 		synth_rvrb.set(\mdepth, 0.1.linlin(0, 1, 0, 1).postln);
 		synth_rvrb.set(\mfreq, 0.2.linlin(0, 1, 0, 10).postln);
-		synth_rvrb.set(\lowband,  0.39.linlin(0, 1, 100, 6000).postln);
-		synth_rvrb.set(\highband,  0.3.linlin(0, 1, 1000, 10000).postln);
+		synth_rvrb.set(\lowband,  0.39.linexp(0, 1, 100, 6000).postln);
+		synth_rvrb.set(\highband,  0.3.linexp(0, 1, 1000, 10000).postln);
 
 		rvb_slider_mix.value_(0.5);
 		synth_rvrb.set(\mix_rate,  0.5.postln);
 	};
-
-
 
 	// utility components
 	util_text_ttl = StaticText().string_("Outputs").align_(\top).font_(font);
@@ -409,12 +473,12 @@ s.waitForBoot {
 	util_func_record = {
 		if ((util_button_record.value == 0), {
 			"stop recording...".postln;
-			// s.stopRecording;
+		    // start recording:
+	        r.stopRecording;
 		});
 		if ((util_button_record.value == 1), {
 			"start recording...".postln;
-/*			s.prepareForRecord;
-			s.record;*/
+	        r.record;
 		});
 	};
 
@@ -454,9 +518,9 @@ s.waitForBoot {
 	util_text_gainc  = StaticText().string_("C").align_(\top).font_(font);
 	util_text_gaino  = StaticText().string_("O").align_(\top).font_(font);
 	util_text_gains  = StaticText().string_("S").align_(\top).font_(font);
-	util_knob_gainc = Slider(w, Rect(0, 00, 5, 10)).value_(0.5).action_({ |sl| synth_concate.set(\gainc, sl.value.linlin(0, 1, 0, 2).postln)});
-	util_knob_gaino = Slider(w, Rect(0, 00, 5, 10)).value_(0.5).action_({ |sl| synth_output.set(\gaino, sl.value.linlin(0, 1, 0, 2).postln)});
-    util_knob_gains = Slider(w, Rect(0, 00, 5, 10)).value_(0.5).action_({ |sl| synth_concate.set(\gains, sl.value.linlin(0, 1, 0, 2).postln)});
+	util_knob_gainc = Slider(w, Rect(0, 00, 5, 10)).value_(0).action_({ |sl| synth_concate.set(\gainc, sl.value.linexp(0, 1, 1, 16).postln)});
+	util_knob_gaino = Slider(w, Rect(0, 00, 5, 10)).value_(0).action_({ |sl| synth_output.set(\gaino, sl.value.linlin(0, 1, 1, 16).postln)});
+    util_knob_gains = Slider(w, Rect(0, 00, 5, 10)).value_(0).action_({ |sl| synth_concate.set(\gains, sl.value.linlin(0, 1, 1, 16).postln)});
 	button_marvin = Button(w, Rect(0, 00, 10, 5)).states_([
 		                                  ["Life?",  Color.black, Color.white],
 		                                  ["Don't",  Color.white, Color.new255(205.0, 140.0, 149.0)],
@@ -472,9 +536,10 @@ s.waitForBoot {
 	layout_scope = GridLayout.columns([GridLayout.rows([GridLayout.columns([scope_text_ctrl, scope_ctrl]),
 		           GridLayout.columns([scope_text_src, scope_src])]), scope_out]);
 
-	// input panel layout
 	layout_in_load = GridLayout.columns([GridLayout.rows([in_button_load, in_button_load_mode]),
-		                                 in_slider_load_source_rate, in_slider_load_control_rate  ]);
+	                 GridLayout.rows([in_textv_control, in_button_stretch_control]),
+		             GridLayout.rows([in_textv_source, in_button_stretch_source])]);
+
 	layout_in_eval = GridLayout.columns([GridLayout.rows([in_button_eval, in_button_eval_mode]), in_textv_eval]);
 	layout_in_live = GridLayout.rows([in_button_live, in_button_live_mode]);
 
@@ -518,8 +583,6 @@ s.waitForBoot {
 
 	// utilities function panel layout
 	layout_util_out  = GridLayout.columns([util_button_record, util_button_play, util_button_stream, button_marvin, img_marvin.plot(showInfo:false)]);
-	// layout_util_gain = GridLayout.columns([util_text_gain, GridLayout.rows([util_knob_gainc, util_knob_gains]), util_knob_gaino]);
-	// layout_util_gain = GridLayout.rows([util_knob_gainc, util_knob_gaino, util_knob_gains]);
 	layout_util_gain = GridLayout.rows([GridLayout.columns([util_knob_gainc, util_text_gainc]),
 		                                GridLayout.columns([util_knob_gaino, util_text_gaino]),
 		                                GridLayout.columns([util_knob_gains, util_text_gains])]);
@@ -531,26 +594,6 @@ s.waitForBoot {
 }；
 )
 
-/*			    t60 = 1.0, damp = 0.0, size = 1, earlydiff = 0.707,
-		    mdepth = 0.1, mfreq = 2, lowband = 500, highband = 2000;*/
-
-/*0.091.linlin(0, 1, 0.1, 10).postln;
-0.0.linlin(0, 1, 0, 1).postln;
-0.3.linexp(0, 1, 0.5, 5).postln;
-0.707.linlin(0, 1, 0, 1).postln;
-0.1.linlin(0, 1, 0, 1).postln;
-0.2.linlin(0, 1, 0, 10).postln;
-0.39.linexp(0, 1, 100, 6000).postln;
-0.3.linexp(0, 1, 1000, 10000).postln;*/
-
-
-
-
-
-Ndef(\zy_source, { SinOsc.ar(2)*Mix(Gendy3.ar(3,5,1.0,1.0,(Array.fill(5,{LFNoise0.kr(1.3.rand,1,2)})*MouseY.kr(100,3780,'exponential')),MouseY.kr(0.01,0.05),MouseY.kr(0.001,0.016),5,mul:0.1)) });
-Ndef(\zy_control, { SoundIn.ar });
-Ndef(\zy_control, { Silent.ar});
-Ndef(\zy_source, { SoundIn.ar });
-
+// have fun~
 /*DarkSlateGrey  [ 47.0, 79.0, 79.0 ]
 LightPink3  [ 205.0, 140.0, 149.0 ]*/
