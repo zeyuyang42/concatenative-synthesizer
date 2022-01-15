@@ -33,7 +33,7 @@ With a comprehensive GUI makes CSS easier to use for whom has no programming kno
 
 Check [the document](./concatenative sound synthesizer.pdf) for detail
 
-![image-20220115171009941](./Figures/Signal Chain.png)
+![Signal_Chain](./Figures/Signal_Chain.png)
 
 
 
