@@ -31,7 +31,7 @@ concatenative sound synthesizer (CSS) is based on the Concat2 extension in Super
 
 With a comprehensive GUI makes CSS easier to use for whom has no programming knowledge in Supercollider. 
 
-Check [the document](./concatenative sound synthesizer.pdf) for detail
+Check **concatenative sound synthesizer.pdf** for detail
 
 ![Signal_Chain](./Figures/Signal_Chain.png)
 
