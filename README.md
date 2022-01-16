@@ -29,7 +29,7 @@ concatenative sound synthesizer (CSS) is based on the Concat2 extension in Super
 
 > Implementation of concatenative sound synthesis based on matching four features from a control input to the database generated from a source input. The control determines which frames of the source get played back, and you can change the weighting of features to refine your matching criteria (ie, make rms the most heavily weighted to have amplitude as the most important criteria). You can also modulate the match length, being the amount of source played back for a match, the feature weightings, and freeze the database collection to work with a collected sample from the source.
 
-With a comprehensive GUI makes CSS easier to use for whom has no programming knowledge in Supercollider. 
+With a comprehensive GUI makes CSS easier to use for whom has no programming knowledge. 
 
 Check **concatenative sound synthesizer.pdf** for detail
 

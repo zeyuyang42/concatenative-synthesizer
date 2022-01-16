@@ -468,7 +468,7 @@ s.waitForBoot {
 
 	// utility components
 	util_text_ttl = StaticText().string_("Outputs").align_(\top).font_(font);
-	util_button_record = Button(w, Rect(0, 00, 10, 5)).states_([["record", Color.black, Color.white],
+	util_button_record = Button(w, Rect(0, 00, 10, 5)).states_([["Record", Color.black, Color.white],
 		                                  ["ing...", Color.white, Color.new255(205.0, 140.0, 149.0)]]).action_({util_func_record.value}).font_(font);
 	util_func_record = {
 		if ((util_button_record.value == 0), {
@@ -595,5 +595,5 @@ s.waitForBoot {
 )
 
 // have fun~
-/*DarkSlateGrey  [ 47.0, 79.0, 79.0 ]
+/*DarkSlateGrey  [ 66.0, 66.0, 66.0 ]
 LightPink3  [ 205.0, 140.0, 149.0 ]*/
